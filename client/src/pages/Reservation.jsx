@@ -5,9 +5,12 @@ import { fetchRooms, createBooking } from '../api';
 function Reservation() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('idle');
+  const [errors, setErrors] = useState({});
+
   const [formData, setFormData] = useState({
     roomId: searchParams.get('room') || '',
     fullName: '',
@@ -15,34 +18,53 @@ function Reservation() {
     phone: '',
     checkIn: '',
     checkOut: '',
-    guests: '2',
-    specialRequest: ''
+    guests: 2,
+    specialRequest: '',
   });
-  const [errors, setErrors] = useState({});
 
   useEffect(() => {
     fetchRooms()
-      .then(setRooms)
-      .catch(console.error)
+      .then((data) => setRooms(Array.isArray(data) ? data : []))
+      .catch((error) => {
+        console.error('Failed to load rooms:', error);
+        setRooms([]);
+      })
       .finally(() => setLoading(false));
   }, []);
 
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
   const validateForm = () => {
     const newErrors = {};
-    const checkInDate = new Date(formData.checkIn);
-    const checkOutDate = new Date(formData.checkOut);
+    const checkInDate = formData.checkIn ? new Date(formData.checkIn) : null;
+    const checkOutDate = formData.checkOut ? new Date(formData.checkOut) : null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     if (!formData.roomId) newErrors.roomId = 'Please select a room';
-    if (!formData.fullName) newErrors.fullName = 'Name is required';
-    if (!formData.email) newErrors.email = 'Email is required';
-    if (!formData.phone) newErrors.phone = 'Phone is required';
+    if (!formData.fullName.trim()) newErrors.fullName = 'Name is required';
+    if (!formData.email.trim()) newErrors.email = 'Email is required';
+    if (!formData.phone.trim()) newErrors.phone = 'Phone is required';
     if (!formData.checkIn) newErrors.checkIn = 'Check-in date is required';
-    if (checkInDate < today) newErrors.checkIn = 'Check-in cannot be in the past';
     if (!formData.checkOut) newErrors.checkOut = 'Check-out date is required';
-    if (checkInDate >= checkOutDate) newErrors.checkOut = 'Check-out must be after check-in';
-    if (!formData.guests || formData.guests < 1) newErrors.guests = 'At least 1 guest required';
+
+    if (checkInDate && checkInDate < today) {
+      newErrors.checkIn = 'Check-in cannot be in the past';
+    }
+
+    if (checkInDate && checkOutDate && checkInDate >= checkOutDate) {
+      newErrors.checkOut = 'Check-out must be after check-in';
+    }
+
+    if (!formData.guests || Number(formData.guests) < 1) {
+      newErrors.guests = 'At least 1 guest required';
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -53,12 +75,31 @@ function Reservation() {
     if (!validateForm()) return;
 
     setStatus('loading');
+    setErrors({});
+
     try {
-      await createBooking(formData);
+      const payload = {
+        roomId: formData.roomId,
+        fullName: formData.fullName.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+        checkIn: formData.checkIn,
+        checkOut: formData.checkOut,
+        guests: Number(formData.guests),
+        specialRequest: formData.specialRequest?.trim() || '',
+      };
+
+      await createBooking(payload);
+
       setStatus('success');
       setTimeout(() => navigate('/'), 3000);
     } catch (error) {
-      setErrors({ submit: error.response?.data?.error || 'Booking failed. Please try again.' });
+      setErrors({
+        submit:
+          error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          'Booking failed. Please try again.',
+      });
       setStatus('error');
     }
   };
@@ -85,7 +126,7 @@ function Reservation() {
             </div>
             <h2 className="font-serif text-2xl text-green-800 mb-2">Booking Requested!</h2>
             <p className="text-green-700 mb-6">
-              Thank you for your reservation request. We'll confirm your booking via email shortly.
+              Thank you for your reservation request. We&apos;ll confirm your booking via email shortly.
             </p>
             <Link to="/" className="btn-primary">
               Return to Home
@@ -116,14 +157,16 @@ function Reservation() {
                 {errors.submit}
               </div>
             )}
+
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Select Room *</label>
                 <select
+                  name="roomId"
                   required
                   className="input-field"
                   value={formData.roomId}
-                  onChange={(e) => setFormData({ ...formData, roomId: e.target.value })}
+                  onChange={handleChange}
                 >
                   <option value="">Choose a room</option>
                   {rooms.map((room) => (
@@ -139,22 +182,25 @@ function Reservation() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Full Name *</label>
                   <input
+                    name="fullName"
                     type="text"
                     required
                     className="input-field"
                     value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                    onChange={handleChange}
                   />
                   {errors.fullName && <p className="text-red-500 text-sm mt-1">{errors.fullName}</p>}
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
                   <input
+                    name="email"
                     type="email"
                     required
                     className="input-field"
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    onChange={handleChange}
                   />
                   {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
                 </div>
@@ -164,24 +210,29 @@ function Reservation() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
                   <input
+                    name="phone"
                     type="tel"
                     required
                     className="input-field"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={handleChange}
                   />
                   {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Number of Guests *</label>
                   <select
+                    name="guests"
                     required
                     className="input-field"
                     value={formData.guests}
-                    onChange={(e) => setFormData({ ...formData, guests: e.target.value })}
+                    onChange={handleChange}
                   >
                     {[1, 2, 3, 4, 5, 6].map((n) => (
-                      <option key={n} value={n}>{n} Guest{n > 1 ? 's' : ''}</option>
+                      <option key={n} value={n}>
+                        {n} Guest{n > 1 ? 's' : ''}
+                      </option>
                     ))}
                   </select>
                   {errors.guests && <p className="text-red-500 text-sm mt-1">{errors.guests}</p>}
@@ -192,22 +243,25 @@ function Reservation() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Check-In Date *</label>
                   <input
+                    name="checkIn"
                     type="date"
                     required
                     className="input-field"
                     value={formData.checkIn}
-                    onChange={(e) => setFormData({ ...formData, checkIn: e.target.value })}
+                    onChange={handleChange}
                   />
                   {errors.checkIn && <p className="text-red-500 text-sm mt-1">{errors.checkIn}</p>}
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Check-Out Date *</label>
                   <input
+                    name="checkOut"
                     type="date"
                     required
                     className="input-field"
                     value={formData.checkOut}
-                    onChange={(e) => setFormData({ ...formData, checkOut: e.target.value })}
+                    onChange={handleChange}
                   />
                   {errors.checkOut && <p className="text-red-500 text-sm mt-1">{errors.checkOut}</p>}
                 </div>
@@ -216,11 +270,12 @@ function Reservation() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Special Requests</label>
                 <textarea
+                  name="specialRequest"
                   rows={4}
                   className="input-field resize-none"
                   placeholder="Any dietary requirements, special occasions, or preferences..."
                   value={formData.specialRequest}
-                  onChange={(e) => setFormData({ ...formData, specialRequest: e.target.value })}
+                  onChange={handleChange}
                 />
               </div>
 
