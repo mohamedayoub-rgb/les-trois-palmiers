@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://les-trois-palmiers.onrender.com/api/$1"
+    }
+  ]
+}
