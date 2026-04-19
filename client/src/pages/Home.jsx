@@ -5,22 +5,22 @@ function Home() {
     {
       title: 'Elegant Accommodation',
       description: 'Refined rooms and suites designed for comfort, privacy, and timeless style.',
-      image: '/images/room2.png',
+      image: '/images/room2',
     },
     {
       title: 'Indoor & Outdoor Pool Experience',
       description: 'Relax by the pool in a serene setting made for leisure and calm escapes.',
-      image: '/images/pool1.png',
+      image: '/images/pool1',
     },
     {
       title: 'Distinctive Moroccan Ambience',
       description: 'Authentic architecture, warm hospitality, and elegant interiors in every corner.',
-      image: '/images/hallway1.png',
+      image: '/images/hallway1',
     },
     {
       title: 'Dining & Lounge Spaces',
       description: 'Beautiful social spaces to enjoy breakfast, conversation, and quiet evenings.',
-      image: '/images/lounge1.png',
+      image: '/images/lounge1',
     },
   ];
 
@@ -28,17 +28,17 @@ function Home() {
     {
       name: 'Royal Suite',
       price: '$850',
-      image: '/images/room2.png',
+      image: '/images/room2',
     },
     {
       name: 'Deluxe Room',
       price: '$450',
-      image: '/images/room1.png',
+      image: '/images/room1',
     },
     {
       name: 'Signature Suite',
       price: '$650',
-      image: '/images/room7.png',
+      image: '/images/room7',
     },
   ];
 
@@ -47,7 +47,7 @@ function Home() {
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src="/images/the-hotel.png"
+            src="/images/the hotel"
             alt="Les Trois Palmiers exterior"
             className="w-full h-full object-cover"
           />
@@ -93,7 +93,7 @@ function Home() {
           <div className="grid lg:grid-cols-2 gap-14 items-center">
             <div className="relative">
               <img
-                src="/images/the-entrance.png"
+                src="/images/the entrance"
                 alt="Hotel entrance"
                 className="w-full h-[620px] object-cover shadow-2xl"
               />
@@ -202,22 +202,22 @@ function Home() {
 
             <div className="grid grid-cols-2 gap-4">
               <img
-                src="/images/hallway2.png"
+                src="/images/hallway2"
                 alt="Hotel hallway"
                 className="w-full h-64 md:h-72 object-cover shadow-lg"
               />
               <img
-                src="/images/lounge2.png"
+                src="/images/lounge2"
                 alt="Hotel lounge"
                 className="w-full h-64 md:h-72 object-cover mt-10 shadow-lg"
               />
               <img
-                src="/images/lounge3.png"
+                src="/images/lounge3"
                 alt="Hotel seating area"
                 className="w-full h-64 md:h-72 object-cover -mt-4 shadow-lg"
               />
               <img
-                src="/images/pool2.png"
+                src="/images/pool2"
                 alt="Pool by night"
                 className="w-full h-64 md:h-72 object-cover mt-6 shadow-lg"
               />
@@ -269,7 +269,7 @@ function Home() {
       <section className="relative py-32 overflow-hidden">
         <div className="absolute inset-0">
           <img
-            src="/images/pool1.png"
+            src="/images/pool1"
             alt="Pool area"
             className="w-full h-full object-cover"
           />
