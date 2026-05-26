@@ -28,4 +28,9 @@ export const submitContact = (data) =>
 export const adminLogin = (data) =>
   api.post('/admin/login', data).then((res) => res.data);
 
+export const createCheckoutSession = (data) =>
+  api.post('/create-checkout-session', data).then((res) => res.data);
+export const getCheckoutSession = (sessionId) =>
+  api.get(`/checkout-session/${sessionId}`).then((res) => res.data);
+
 export default api;

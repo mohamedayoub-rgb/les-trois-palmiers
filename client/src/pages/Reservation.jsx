@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { fetchRooms, createBooking } from '../api';
 
 function Reservation() {
@@ -22,16 +22,15 @@ function Reservation() {
     specialRequest: '',
   });
 
+  // 🔹 LOAD ROOMS
   useEffect(() => {
     fetchRooms()
       .then((data) => setRooms(Array.isArray(data) ? data : []))
-      .catch((error) => {
-        console.error('Failed to load rooms:', error);
-        setRooms([]);
-      })
+      .catch(() => setRooms([]))
       .finally(() => setLoading(false));
   }, []);
 
+  // 🔹 HANDLE INPUT CHANGE
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -40,10 +39,11 @@ function Reservation() {
     }));
   };
 
+  // 🔹 VALIDATION
   const validateForm = () => {
     const newErrors = {};
-    const checkInDate = formData.checkIn ? new Date(formData.checkIn) : null;
-    const checkOutDate = formData.checkOut ? new Date(formData.checkOut) : null;
+    const checkInDate = new Date(formData.checkIn);
+    const checkOutDate = new Date(formData.checkOut);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -54,11 +54,11 @@ function Reservation() {
     if (!formData.checkIn) newErrors.checkIn = 'Check-in date is required';
     if (!formData.checkOut) newErrors.checkOut = 'Check-out date is required';
 
-    if (checkInDate && checkInDate < today) {
+    if (formData.checkIn && checkInDate < today) {
       newErrors.checkIn = 'Check-in cannot be in the past';
     }
 
-    if (checkInDate && checkOutDate && checkInDate >= checkOutDate) {
+    if (formData.checkIn && formData.checkOut && checkInDate >= checkOutDate) {
       newErrors.checkOut = 'Check-out must be after check-in';
     }
 
@@ -70,6 +70,7 @@ function Reservation() {
     return Object.keys(newErrors).length === 0;
   };
 
+  // 🔥 SUBMIT (FIXED REDIRECTION)
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -89,21 +90,30 @@ function Reservation() {
         specialRequest: formData.specialRequest?.trim() || '',
       };
 
-      await createBooking(payload);
+      // Server responds with { success, booking } — unwrap the inner booking.
+      const { booking } = await createBooking(payload);
 
-      setStatus('success');
-      setTimeout(() => navigate('/'), 3000);
+      if (booking?.id) {
+        navigate(`/payment?bookingId=${booking.id}`);
+      } else {
+        throw new Error('Booking ID missing');
+      }
+
     } catch (error) {
+      console.error(error);
+
       setErrors({
         submit:
           error?.response?.data?.error ||
-          error?.response?.data?.message ||
+          error?.message ||
           'Booking failed. Please try again.',
       });
+
       setStatus('error');
     }
   };
 
+  // 🔹 LOADING UI
   if (loading) {
     return (
       <div className="pt-24">
@@ -114,180 +124,97 @@ function Reservation() {
     );
   }
 
-  if (status === 'success') {
-    return (
-      <div className="pt-24 min-h-screen flex items-center justify-center">
-        <div className="container mx-auto px-4 text-center">
-          <div className="bg-green-50 border border-green-200 p-8 max-w-md mx-auto">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 className="font-serif text-2xl text-green-800 mb-2">Booking Requested!</h2>
-            <p className="text-green-700 mb-6">
-              Thank you for your reservation request. We&apos;ll confirm your booking via email shortly.
-            </p>
-            <Link to="/" className="btn-primary">
-              Return to Home
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="pt-24">
-      <section className="py-16 bg-gray-900 text-white">
-        <div className="container mx-auto px-4 text-center">
-          <p className="text-gold-400 uppercase tracking-widest text-sm mb-4">Reservations</p>
-          <h1 className="font-serif text-5xl md:text-6xl mb-4">Book Your Stay</h1>
-          <p className="text-gray-300 max-w-2xl mx-auto">
-            Complete the form below to reserve your dream getaway at Les Trois Palmiers.
-          </p>
-        </div>
+      <section className="py-16 bg-gray-900 text-white text-center">
+        <h1 className="text-5xl font-serif">Book Your Stay</h1>
       </section>
 
       <section className="py-16 bg-white">
-        <div className="container mx-auto px-4">
-          <div className="max-w-2xl mx-auto">
-            {errors.submit && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 mb-6">
-                {errors.submit}
-              </div>
-            )}
+        <div className="container mx-auto px-4 max-w-2xl">
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Select Room *</label>
-                <select
-                  name="roomId"
-                  required
-                  className="input-field"
-                  value={formData.roomId}
-                  onChange={handleChange}
-                >
-                  <option value="">Choose a room</option>
-                  {rooms.map((room) => (
-                    <option key={room.id} value={room.id}>
-                      {room.name} - ${room.price}/night
-                    </option>
-                  ))}
-                </select>
-                {errors.roomId && <p className="text-red-500 text-sm mt-1">{errors.roomId}</p>}
-              </div>
+          {errors.submit && (
+            <div className="bg-red-100 text-red-700 p-3 mb-4">
+              {errors.submit}
+            </div>
+          )}
 
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Full Name *</label>
-                  <input
-                    name="fullName"
-                    type="text"
-                    required
-                    className="input-field"
-                    value={formData.fullName}
-                    onChange={handleChange}
-                  />
-                  {errors.fullName && <p className="text-red-500 text-sm mt-1">{errors.fullName}</p>}
-                </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Email Address *</label>
-                  <input
-                    name="email"
-                    type="email"
-                    required
-                    className="input-field"
-                    value={formData.email}
-                    onChange={handleChange}
-                  />
-                  {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
-                </div>
-              </div>
+            {/* ROOM */}
+            <select
+              name="roomId"
+              value={formData.roomId}
+              onChange={handleChange}
+              className="input-field"
+            >
+              <option value="">Choose a room</option>
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name} - ${room.price}
+                </option>
+              ))}
+            </select>
 
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number *</label>
-                  <input
-                    name="phone"
-                    type="tel"
-                    required
-                    className="input-field"
-                    value={formData.phone}
-                    onChange={handleChange}
-                  />
-                  {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
-                </div>
+            {/* NAME */}
+            <input
+              name="fullName"
+              placeholder="Full Name"
+              value={formData.fullName}
+              onChange={handleChange}
+              className="input-field"
+            />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Number of Guests *</label>
-                  <select
-                    name="guests"
-                    required
-                    className="input-field"
-                    value={formData.guests}
-                    onChange={handleChange}
-                  >
-                    {[1, 2, 3, 4, 5, 6].map((n) => (
-                      <option key={n} value={n}>
-                        {n} Guest{n > 1 ? 's' : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.guests && <p className="text-red-500 text-sm mt-1">{errors.guests}</p>}
-                </div>
-              </div>
+            {/* EMAIL */}
+            <input
+              name="email"
+              placeholder="Email"
+              value={formData.email}
+              onChange={handleChange}
+              className="input-field"
+            />
 
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Check-In Date *</label>
-                  <input
-                    name="checkIn"
-                    type="date"
-                    required
-                    className="input-field"
-                    value={formData.checkIn}
-                    onChange={handleChange}
-                  />
-                  {errors.checkIn && <p className="text-red-500 text-sm mt-1">{errors.checkIn}</p>}
-                </div>
+            {/* PHONE */}
+            <input
+              name="phone"
+              placeholder="Phone"
+              value={formData.phone}
+              onChange={handleChange}
+              className="input-field"
+            />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Check-Out Date *</label>
-                  <input
-                    name="checkOut"
-                    type="date"
-                    required
-                    className="input-field"
-                    value={formData.checkOut}
-                    onChange={handleChange}
-                  />
-                  {errors.checkOut && <p className="text-red-500 text-sm mt-1">{errors.checkOut}</p>}
-                </div>
-              </div>
+            {/* DATES */}
+            <input
+              type="date"
+              name="checkIn"
+              value={formData.checkIn}
+              onChange={handleChange}
+              className="input-field"
+            />
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Special Requests</label>
-                <textarea
-                  name="specialRequest"
-                  rows={4}
-                  className="input-field resize-none"
-                  placeholder="Any dietary requirements, special occasions, or preferences..."
-                  value={formData.specialRequest}
-                  onChange={handleChange}
-                />
-              </div>
+            <input
+              type="date"
+              name="checkOut"
+              value={formData.checkOut}
+              onChange={handleChange}
+              className="input-field"
+            />
 
-              <button
-                type="submit"
-                disabled={status === 'loading'}
-                className="btn-primary w-full disabled:opacity-50"
-              >
-                {status === 'loading' ? 'Processing...' : 'Complete Reservation'}
-              </button>
-            </form>
-          </div>
+            {/* GUESTS */}
+            <input
+              type="number"
+              name="guests"
+              value={formData.guests}
+              onChange={handleChange}
+              className="input-field"
+            />
+
+            {/* SUBMIT */}
+            <button className="btn-primary w-full">
+              {status === 'loading' ? 'Processing...' : 'Continue to Payment'}
+            </button>
+
+          </form>
         </div>
       </section>
     </div>
