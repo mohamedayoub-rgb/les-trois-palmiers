@@ -7,85 +7,15 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
-const CURRENCY = (process.env.STRIPE_CURRENCY || 'usd').toLowerCase();
 
 /* -------------------- MIDDLEWARE -------------------- */
 app.use(cors({
-  origin: CLIENT_URL,
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
   credentials: true
 }));
-
-/* -------------------- STRIPE WEBHOOK --------------------
- * MUST be registered with the raw body parser BEFORE express.json(),
- * because signature verification needs the unparsed request body.
- */
-app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      req.headers['stripe-signature'],
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  try {
-    const session = event.data.object;
-    const bookingId = session.metadata?.bookingId;
-
-    if (event.type === 'checkout.session.completed' && bookingId) {
-      // Idempotent: only the first delivery (status still 'pending') flips + emails.
-      const result = await prisma.booking.updateMany({
-        where: { id: bookingId, status: 'pending' },
-        data: { status: 'confirmed' }
-      });
-
-      if (result.count === 1) {
-        const booking = await prisma.booking.findUnique({
-          where: { id: bookingId },
-          include: { room: true }
-        });
-        await sendMailSafe({
-          to: booking.email,
-          subject: '✅ Payment Received - Booking Confirmed | Les Trois Palmiers',
-          html: `
-            <h2>Hello ${booking.fullName},</h2>
-            <p>Your payment was received and your booking is now <b>confirmed</b> 🎉</p>
-            <h3>Details:</h3>
-            <p><b>Room:</b> ${booking.room.name}</p>
-            <p><b>Check-in:</b> ${booking.checkIn.toDateString()}</p>
-            <p><b>Check-out:</b> ${booking.checkOut.toDateString()}</p>
-            <p><b>Guests:</b> ${booking.guests}</p>
-            <p>We look forward to welcoming you.</p>
-          `
-        });
-      }
-    }
-
-    if (event.type === 'checkout.session.expired' && bookingId) {
-      // Free the room if the customer abandoned an unpaid checkout.
-      await prisma.booking.updateMany({
-        where: { id: bookingId, status: 'pending' },
-        data: { status: 'cancelled' }
-      });
-    }
-  } catch (err) {
-    console.error('Webhook handler error:', err);
-    // Returning 500 makes Stripe retry; safe because the handler is idempotent.
-    return res.status(500).json({ error: 'Webhook processing failed' });
-  }
-
-  res.json({ received: true });
-});
 
 app.use(express.json());
 
@@ -97,15 +27,6 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS,
   },
 });
-
-// Send mail without letting a delivery failure break the request flow.
-const sendMailSafe = async (options) => {
-  try {
-    await transporter.sendMail({ from: process.env.EMAIL_USER, ...options });
-  } catch (err) {
-    console.error('Email send failed:', err.message);
-  }
-};
 
 /* -------------------- AUTH MIDDLEWARE -------------------- */
 const authenticateToken = (req, res, next) => {
@@ -123,7 +44,7 @@ const authenticateToken = (req, res, next) => {
 
 /* -------------------- HEALTH CHECK -------------------- */
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok' });
 });
 
 /* -------------------- ROOMS -------------------- */
@@ -209,6 +130,7 @@ app.post('/api/bookings', async (req, res) => {
       return res.status(400).json({ error: 'Room not available for selected dates' });
     }
 
+    /* -------------------- CREATE BOOKING -------------------- */
     const booking = await prisma.booking.create({
       data: {
         fullName,
@@ -225,43 +147,47 @@ app.post('/api/bookings', async (req, res) => {
     });
 
     /* -------------------- EMAIL ADMIN -------------------- */
-    await sendMailSafe({
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
       to: process.env.ADMIN_EMAIL,
-      subject: "🏨 New Booking Received (awaiting payment)",
+      subject: "🏨 New Booking Received",
       html: `
         <h2>New Booking</h2>
         <p><b>Name:</b> ${fullName}</p>
         <p><b>Email:</b> ${email}</p>
         <p><b>Phone:</b> ${phone}</p>
         <p><b>Room:</b> ${room.name}</p>
-        <p><b>Check-in:</b> ${checkIn}</p>
-        <p><b>Check-out:</b> ${checkOut}</p>
+        <p><b>Check-in:</b> ${checkInDate.toDateString()}</p>
+        <p><b>Check-out:</b> ${checkOutDate.toDateString()}</p>
         <p><b>Guests:</b> ${guests}</p>
         <p><b>Request:</b> ${specialRequest || 'None'}</p>
       `
     });
 
-    /* -------------------- EMAIL CUSTOMER (pending payment) -------------------- */
-    await sendMailSafe({
+    /* -------------------- EMAIL CUSTOMER -------------------- */
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
       to: email,
-      subject: "Booking Received - Payment Required | Les Trois Palmiers",
+      subject: "✅ Booking Confirmation",
       html: `
-        <h2>Hello ${fullName},</h2>
-        <p>We've received your booking request. It will be <b>confirmed once payment is completed</b>.</p>
+        <h2>Hello ${fullName}</h2>
+        <p>Your booking has been received 🎉</p>
 
-        <h3>Details:</h3>
         <p><b>Room:</b> ${room.name}</p>
-        <p><b>Check-in:</b> ${checkIn}</p>
-        <p><b>Check-out:</b> ${checkOut}</p>
+        <p><b>Check-in:</b> ${checkInDate.toDateString()}</p>
+        <p><b>Check-out:</b> ${checkOutDate.toDateString()}</p>
         <p><b>Guests:</b> ${guests}</p>
 
-        <p>If you closed the payment window before paying, please contact us to complete your payment.</p>
+        <p>We will contact you soon.</p>
       `
     });
 
-    res.status(201).json({
+    /* -------------------- CLEAN RESPONSE (IMPORTANT FIX) -------------------- */
+    return res.status(201).json({
       success: true,
-      booking
+      message: "Booking created successfully",
+      bookingId: booking.id,
+      redirectUrl: `http://localhost:5173/payment/${booking.id}`
     });
 
   } catch (error) {
@@ -270,78 +196,7 @@ app.post('/api/bookings', async (req, res) => {
   }
 });
 
-/* -------------------- STRIPE CHECKOUT -------------------- */
-const MS_PER_DAY = 1000 * 60 * 60 * 24;
-
-app.post('/api/create-checkout-session', async (req, res) => {
-  try {
-    const { bookingId } = req.body;
-    if (!bookingId) return res.status(400).json({ error: 'bookingId is required' });
-
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: { room: true }
-    });
-
-    if (!booking) return res.status(404).json({ error: 'Booking not found' });
-    if (booking.status !== 'pending') {
-      return res.status(400).json({ error: 'Booking is not awaiting payment' });
-    }
-
-    // Price is derived server-side from the room — never trust a client-sent amount.
-    const nights = Math.max(1, Math.round((booking.checkOut - booking.checkIn) / MS_PER_DAY));
-    const unitAmount = Math.round(booking.room.price * 100); // smallest currency unit
-
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      customer_email: booking.email,
-      line_items: [{
-        quantity: nights,
-        price_data: {
-          currency: CURRENCY,
-          unit_amount: unitAmount,
-          product_data: {
-            name: `${booking.room.name} — ${nights} night${nights > 1 ? 's' : ''}`
-          }
-        }
-      }],
-      metadata: { bookingId: booking.id },
-      success_url: `${CLIENT_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${CLIENT_URL}/reservation`,
-      expires_at: Math.floor(Date.now() / 1000) + 30 * 60 // 30 min (Stripe minimum)
-    });
-
-    res.json({ url: session.url });
-  } catch (error) {
-    console.error('Checkout session error:', error);
-    res.status(500).json({ error: 'Failed to start payment' });
-  }
-});
-
-// Public verification for the success page. Returns minimal, non-PII data only.
-app.get('/api/checkout-session/:sessionId', async (req, res) => {
-  try {
-    const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
-    const bookingId = session.metadata?.bookingId;
-
-    const booking = bookingId
-      ? await prisma.booking.findUnique({ where: { id: bookingId }, include: { room: true } })
-      : null;
-
-    res.json({
-      paid: session.payment_status === 'paid',
-      status: booking?.status || 'unknown',
-      roomName: booking?.room?.name || null,
-      checkIn: booking?.checkIn || null,
-      checkOut: booking?.checkOut || null
-    });
-  } catch (error) {
-    console.error('Session verify error:', error);
-    res.status(400).json({ error: 'Invalid session' });
-  }
-});
-
-/* -------------------- ADMIN BOOKING ROUTES -------------------- */
+/* -------------------- ADMIN ROUTES -------------------- */
 app.get('/api/bookings', authenticateToken, async (req, res) => {
   try {
     const bookings = await prisma.booking.findMany({
@@ -390,10 +245,8 @@ app.delete('/api/bookings/:id', authenticateToken, async (req, res) => {
 /* -------------------- CONTACT -------------------- */
 app.post('/api/contact', async (req, res) => {
   try {
-    const { name, email, subject, message } = req.body;
-
     const contact = await prisma.contactMessage.create({
-      data: { name, email, subject, message }
+      data: req.body
     });
 
     res.status(201).json(contact);
@@ -428,13 +281,7 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
-/* -------------------- ERROR HANDLER -------------------- */
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'Something went wrong' });
-});
-
-/* -------------------- START SERVER -------------------- */
+/* -------------------- SERVER START -------------------- */
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

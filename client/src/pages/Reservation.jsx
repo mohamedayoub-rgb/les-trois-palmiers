@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { fetchRooms, createBooking } from '../api';
 
 function Reservation() {
@@ -90,13 +90,16 @@ function Reservation() {
         specialRequest: formData.specialRequest?.trim() || '',
       };
 
-      // Server responds with { success, booking } — unwrap the inner booking.
-      const { booking } = await createBooking(payload);
+      // ✅ CREATE BOOKING
+      const booking = await createBooking(payload);
 
-      if (booking?.id) {
+      console.log("BOOKING CREATED:", booking); // DEBUG
+
+      // ✅ FORCE REDIRECT TO PAYMENT
+      if (booking && booking.id) {
         navigate(`/payment?bookingId=${booking.id}`);
       } else {
-        throw new Error('Booking ID missing');
+        throw new Error("Booking ID missing");
       }
 
     } catch (error) {
